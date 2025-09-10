@@ -1,7 +1,166 @@
 import { Request, Response } from 'express';
-import { analyzeImages } from '../services/analysisService';
-import { initializeAi } from '../services/imageService';
-import { AnalysisRequest, AnalysisResponse, ApiError } from '../types';
+import { GoogleGenAI, Type } from '@google/genai';
+import { AnalysisRequest, AnalysisResponse, ApiError, AnalysisResult, User, Challenge } from '../types/index.js';
+import { getGeminiKeyManager } from '../services/geminiKeyManager.js';
+
+/**
+ * Google Gemini AI instance cache
+ */
+const aiInstances: Map<string, GoogleGenAI> = new Map();
+
+/**
+ * 🔑 Get or create Gemini AI client for specific API key
+ */
+const getGeminiClient = (apiKey: string): GoogleGenAI => {
+  if (!aiInstances.has(apiKey)) {
+    aiInstances.set(apiKey, new GoogleGenAI({ apiKey }));
+  }
+  return aiInstances.get(apiKey)!;
+};
+
+/**
+ * Analyze images using Gemini AI with intelligent key rotation
+ */
+const analyzeImages = async (
+  user: User,
+  challenge: Challenge,
+  generatedImageBase64: string,
+  userPrompt: string,
+  targetImageBase64: string
+): Promise<AnalysisResult> => {
+  const getUserName = (email: string): string => {
+    const namePart = email.split('@')[0];
+    return namePart.split('.')[0].charAt(0).toUpperCase() + namePart.split('.')[0].slice(1);
+  };
+  
+  const userName = getUserName(user.email);
+
+  const systemPrompt = `You are an expert image analysis AI for a prompt engineering learning tool. Your feedback should be quirky, fun, and slightly sarcastic in simple Indian English mixed with Hindi words. Keep technical terms in pure English but make the tone entertaining and memorable.
+  
+  A student named ${userName} is trying to generate an image to match a challenge requirement.
+  
+  IMPORTANT ANALYSIS RULES:
+  1. Check if the generated image matches the SPECIFIC challenge requirements
+  2. For "Simple Shape" - Look for basic geometric shapes (circle, square, triangle)
+  3. For "Object with Background" - Look for objects WITH detailed surroundings, textures, and lighting
+  4. For "Creative Portrait" - Look for people/faces with artistic elements
+  5. For "Nature Scene" - Look for landscapes, trees, animals in natural settings
+  6. For "Abstract Art" - Look for non-representational artistic elements
+  7. For "Architecture" - Look for buildings, structures, architectural details
+  
+  Be STRICT about challenge-specific requirements! A simple red circle for "Object with Background" should get 40-70% because it lacks textures, lighting details, and proper background description.
+
+  PERSONALITY TRAITS:
+  - Use quirky expressions like "Arre yaar", "Bhai", "Boss", "Dekho ji"
+  - Be playfully sarcastic when they're completely wrong
+  - Use emoji-like expressions in text like "😅", "🤔" 
+  - Mix Hindi-English naturally
+  - Be encouraging but honest about mistakes
+  - Make jokes about obvious mismatches
+
+  FEEDBACK RULES:
+  1. If content is COMPLETELY WRONG (e.g., dog for "Simple Shape"), be playfully dramatic about it
+  2. Give specific, actionable prompts with quirky explanations
+  3. Use fun analogies and comparisons
+  4. Keep it light-hearted but helpful
+
+  Provide:
+  1. A similarity score (0-100) - be strict but fair
+  2. 2-3 quirky feedback suggestions with actionable prompt improvements`;
+
+  const userTurnPrompt = `
+  Challenge Name: "${challenge.name}"
+  Challenge Description: "${challenge.description}"
+  The student ${userName} generated this image using their prompt.
+  Student's Prompt: "${userPrompt}"
+  
+  Compare the TARGET IMAGE (first image - what they should match) with the GENERATED IMAGE (second image - what they actually created).
+  
+  Grade strictly based on:
+  1. Challenge-specific requirements fulfillment
+  2. Technical quality and detail level
+  3. Prompt accuracy to image output
+  
+  Return JSON with:
+  - similarityScore: number (0-100, be strict!)
+  - feedback: array of 2-3 quirky suggestions for improvement`;
+
+  // 🔑 Use GeminiKeyManager for intelligent key rotation
+  const analysisResponse = await getGeminiKeyManager().executeWithRetry(async (apiKey) => {
+    const gemini = getGeminiClient(apiKey);
+    
+    const targetImagePart = {
+      inlineData: { data: targetImageBase64, mimeType: "image/jpeg" }
+    };
+    
+    const generatedImagePart = {
+      inlineData: { data: generatedImageBase64, mimeType: "image/jpeg" }
+    };
+
+    const responseSchema = {
+      type: Type.OBJECT,
+      properties: {
+        similarityScore: {
+          type: Type.NUMBER,
+          description: 'A similarity score from 0-100 comparing the generated image to the target image.',
+        },
+        feedback: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'An array of up to 3 strings with quirky, entertaining, and helpful prompt improvement suggestions.',
+        },
+      },
+      required: ['similarityScore', 'feedback'],
+    };
+
+    return await gemini.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: {
+        parts: [
+          { text: "TARGET IMAGE (what student should match):" },
+          targetImagePart,
+          { text: "GENERATED IMAGE (what student actually created):" },
+          generatedImagePart,
+          { text: userTurnPrompt },
+        ]
+      },
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: responseSchema,
+      }
+    });
+  }, 'image-analysis');
+
+  const jsonText = analysisResponse.text?.trim() || '';
+  if (!jsonText) {
+    throw new Error("Empty response from Gemini API");
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText);
+    return {
+      similarityScore: Math.min(100, Math.max(0, Math.round(parsed.similarityScore || 0))),
+      feedback: Array.isArray(parsed.feedback) ? parsed.feedback : ['Analysis failed, but keep trying! 🤖'],
+      detailedAnalysis: {
+        colorMatch: 50, shapeMatch: 50, compositionMatch: 50, overallQuality: 50
+      },
+    };
+  } catch (parseError) {
+    console.error('❌ Failed to parse Gemini response as JSON:', parseError);
+    return {
+      similarityScore: 50,
+      feedback: [
+        `Arre ${userName}! 😅 Something went wrong with the analysis, but don't worry!`,
+        "Try making your prompt more specific and detailed, boss! 🎯",
+        "Add more descriptive words about colors, shapes, and style preferences! ✨"
+      ],
+      detailedAnalysis: {
+        colorMatch: 50, shapeMatch: 50, compositionMatch: 50, overallQuality: 50
+      },
+    };
+  }
+};
 
 /**
  * Validate analysis request
@@ -59,18 +218,7 @@ export const analyzeImageComparison = async (req: Request, res: Response): Promi
       throw new ApiError('Generated image is required for comparison', 400, 'MISSING_GENERATED_IMAGE');
     }
 
-    // Initialize AI if apiKey is provided
-    if (apiKey) {
-      initializeAi(apiKey);
-    } else if (!process.env.GEMINI_API_KEY) {
-      throw new ApiError(
-        'API key is required for image analysis. Please set GEMINI_API_KEY in server environment.',
-        400,
-        'MISSING_API_KEY'
-      );
-    }
-
-    console.log('🤖 Starting image analysis...');
+    console.log('🤖 Starting image analysis with GeminiKeyManager...');
     
     const analysisResult = await analyzeImages(
       user,

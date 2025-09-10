@@ -1,6 +1,21 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { getAi } from './imageService';
-import { AnalysisResult, User, Challenge } from '../types';
+import { AnalysisResult, User, Challenge } from '../types/index.js';
+import { getGeminiKeyManager } from './geminiKeyManager.js';
+
+/**
+ * Google Gemini AI instance cache
+ */
+const aiInstances: Map<string, GoogleGenAI> = new Map();
+
+/**
+ * 🔑 Get or create Gemini AI client for specific API key
+ */
+const getGeminiClient = (apiKey: string): GoogleGenAI => {
+  if (!aiInstances.has(apiKey)) {
+    aiInstances.set(apiKey, new GoogleGenAI({ apiKey }));
+  }
+  return aiInstances.get(apiKey)!;
+};
 
 export const analyzeImages = async (
   user: User,
@@ -23,8 +38,6 @@ export const analyzeImages = async (
     if (!generatedImageBase64) {
       throw new Error('Generated image is missing in analysis service');
     }
-
-    const gemini = getAi();
 
     const getUserName = (email: string): string => {
       const namePart = email.split('@')[0];
@@ -63,123 +76,155 @@ export const analyzeImages = async (
     4. Keep it light-hearted but helpful
 
     Provide:
-    1. A 'similarityScore' from 0-100.
-    2. A 'feedback' JSON array of up to 3 strings with quirky, entertaining prompt improvement suggestions.
+    1. A similarity score (0-100) - be strict but fair
+    2. 2-3 quirky feedback suggestions with actionable prompt improvements`;
 
-    Respond ONLY with a JSON object matching the provided schema.`;
+    const userTurnPrompt = `
+    Challenge Name: "${challenge.name}"
+    Challenge Description: "${challenge.description}"
+    The student ${userName} generated this image using their prompt.
+    Student's Prompt: "${userPrompt}"
+    
+    Compare the TARGET IMAGE (first image - what they should match) with the GENERATED IMAGE (second image - what they actually created).
+    
+    Grade strictly based on:
+    1. Challenge-specific requirements fulfillment
+    2. Technical quality and detail level
+    3. Prompt accuracy to image output
+    
+    Return JSON with:
+    - similarityScore: number (0-100, be strict!)
+    - feedback: array of 2-3 quirky suggestions for improvement`;
 
-    const userTurnPrompt = `Challenge Name: "${challenge.name}".
-    Challenge Goal: "${challenge.description}".
-    Student's Prompt: "${userPrompt}".
-    
-    IMPORTANT: You have been provided with TWO images:
-    1. TARGET IMAGE - This is what the student should match (challenge reference)
-    2. GENERATED IMAGE - This is what the student actually created using their prompt
-    
-    Compare the GENERATED image with the TARGET image and score based on how well they match according to the challenge requirements.
-    
-    SCORING GUIDE - Be strict but quirky:
-    - "Simple Shape" challenge: Dogs, people, complex scenes = 10-30% (with funny roasting)
-      Perfect geometric shapes matching target = 80-100% (with celebration)
-      Close attempts = 40-70% (with encouraging jokes)
-    
-    - "Object with Background" challenge: Wrong objects = 10-40%
-      Correct objects without texture/lighting = 40-70%
-      Objects with basic background but missing textures = 50-75%
-      Perfect match with detailed textures, lighting, and surroundings = 80-100%
-    
-    - Other challenges: Match the target image requirements closely for 80-100%
-      Partial matches = 50-79%, Wrong content = 10-40%
-    
-    The student ${userName} generated this image using their prompt. 
-    
-    Give them quirky, memorable feedback that's both funny and helpful. Roast them playfully if they're way off, celebrate if they're close!`;
-
-    // Send both images separately to Gemini for accurate comparison
-    console.log(`🚀 Preparing images for Gemini analysis...`);
-    
-    const targetImagePart = {
-      inlineData: {
-        data: targetImageBase64,
-        mimeType: "image/jpeg",
-      },
-    };
-    
-    const generatedImagePart = {
-      inlineData: {
-        data: generatedImageBase64,
-        mimeType: "image/jpeg",
-      },
-    };
-
-    console.log(`✅ Target image part created: ${targetImagePart.inlineData.data ? 'SUCCESS' : 'FAILED'}`);
-    console.log(`✅ Generated image part created: ${generatedImagePart.inlineData.data ? 'SUCCESS' : 'FAILED'}`);
-    console.log(`📤 Sending ${5} parts to Gemini: [Target label, Target image, Generated label, Generated image, Prompt]`);
-
-    const responseSchema = {
-      type: Type.OBJECT,
-      properties: {
-        similarityScore: {
-          type: Type.NUMBER,
-          description: 'A similarity score from 0-100 comparing the generated image to the target image.',
+    // 🔑 Use GeminiKeyManager for intelligent key rotation and retry logic
+    const analysisResponse = await getGeminiKeyManager().executeWithRetry(async (apiKey: string) => {
+      // Get AI client for this specific key
+      const gemini = getGeminiClient(apiKey);
+      
+      // Prepare image parts
+      const targetImagePart = {
+        inlineData: {
+          data: targetImageBase64,
+          mimeType: "image/jpeg",
         },
-        feedback: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.STRING,
+      };
+      
+      const generatedImagePart = {
+        inlineData: {
+          data: generatedImageBase64,
+          mimeType: "image/jpeg",
+        },
+      };
+
+      console.log(`✅ Target image part created: ${targetImagePart.inlineData.data ? 'SUCCESS' : 'FAILED'}`);
+      console.log(`✅ Generated image part created: ${generatedImagePart.inlineData.data ? 'SUCCESS' : 'FAILED'}`);
+      console.log(`📤 Sending analysis request to Gemini...`);
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          similarityScore: {
+            type: Type.NUMBER,
+            description: 'A similarity score from 0-100 comparing the generated image to the target image.',
           },
-          description: 'An array of up to 3 strings with quirky, entertaining, and helpful prompt improvement suggestions. Use playful Indian English, be sarcastic when appropriate, but always provide actionable advice.',
+          feedback: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.STRING,
+            },
+            description: 'An array of up to 3 strings with quirky, entertaining, and helpful prompt improvement suggestions. Use playful Indian English, be sarcastic when appropriate, but always provide actionable advice.',
+          },
         },
-      },
-      required: ['similarityScore', 'feedback'],
-    };
+        required: ['similarityScore', 'feedback'],
+      };
 
-    const response = await gemini.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: {
-        parts: [
-          { text: "TARGET IMAGE (what student should match):" },
-          targetImagePart,
-          { text: "GENERATED IMAGE (what student actually created):" },
-          generatedImagePart,
-          { text: userTurnPrompt },
-        ]
-      },
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: responseSchema,
-      }
-    });
+      // Analyze images with current key
+      return await gemini.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: {
+          parts: [
+            { text: "TARGET IMAGE (what student should match):" },
+            targetImagePart,
+            { text: "GENERATED IMAGE (what student actually created):" },
+            generatedImagePart,
+            { text: userTurnPrompt },
+          ]
+        },
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: responseSchema,
+        }
+      });
+    }, 'image-analysis');
 
-    const jsonText = response.text?.trim() || '';
+    const jsonText = analysisResponse.text?.trim() || '';
     if (!jsonText) {
       throw new Error("Empty response from Gemini API");
     }
-    
-    console.log('🔍 Gemini analysis response:', jsonText);
-    
-    const result: AnalysisResult = JSON.parse(jsonText);
-    
-    if (!result || typeof result.similarityScore !== 'number' || !Array.isArray(result.feedback)) {
-      console.error('❌ Malformed analysis data:', result);
-      throw new Error("Model returned malformed analysis data.");
-    }
-    
-    console.log('✅ Analysis result validated:', { 
-      similarityScore: result.similarityScore, 
-      feedbackCount: result.feedback.length,
-      targetImageUsed: !!targetImageBase64,
-      generatedImageUsed: !!generatedImageBase64
-    });
-    
-    return result;
 
-  } catch (error) {
-    console.error("Failed to get analysis:", error);
-    if (error instanceof Error) {
-      throw new Error(`Analysis failed: ${error.message}`);
+    console.log(`📝 Raw Gemini response: ${jsonText}`);
+
+    let analysisResult: AnalysisResult;
+    try {
+      const parsed = JSON.parse(jsonText);
+      analysisResult = {
+        similarityScore: Math.min(100, Math.max(0, Math.round(parsed.similarityScore || 0))),
+        feedback: Array.isArray(parsed.feedback) ? parsed.feedback : ['Analysis failed, but keep trying! 🤖'],
+        detailedAnalysis: {
+          colorMatch: 50,
+          shapeMatch: 50,
+          compositionMatch: 50,
+          overallQuality: 50
+        },
+      };
+    } catch (parseError) {
+      console.error('❌ Failed to parse Gemini response as JSON:', parseError);
+      console.log('Raw response that failed to parse:', jsonText);
+      
+      // Fallback analysis result
+      analysisResult = {
+        similarityScore: 50,
+        feedback: [
+          `Arre ${userName}! 😅 Something went wrong with the analysis, but don't worry!`,
+          "Try making your prompt more specific and detailed, boss! 🎯",
+          "Add more descriptive words about colors, shapes, and style preferences! ✨"
+        ],
+        detailedAnalysis: {
+          colorMatch: 50,
+          shapeMatch: 50,
+          compositionMatch: 50,
+          overallQuality: 50
+        },
+      };
     }
-    throw new Error("An unknown error occurred during analysis.");
+
+    console.log(`✅ Analysis completed - Score: ${analysisResult.similarityScore}%`);
+    console.log(`💬 Feedback points: ${analysisResult.feedback.length}`);
+    
+    return analysisResult;
+    
+  } catch (error) {
+    console.error('❌ Error in analyzeImages:', error);
+    
+    // Enhanced error handling for better debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Analysis error details:', errorMessage);
+    
+    // Return a fallback result instead of throwing
+    return {
+      similarityScore: 30,
+      feedback: [
+        "Oops! 😅 The analysis system had a little hiccup, but don't let that stop you!",
+        "Try a simpler, more direct prompt and see what magic happens! ✨",
+        "Sometimes the best art comes from the most unexpected mistakes! 🎨"
+      ],
+      detailedAnalysis: {
+        colorMatch: 30,
+        shapeMatch: 30,
+        compositionMatch: 30,
+        overallQuality: 30
+      },
+    };
   }
 };

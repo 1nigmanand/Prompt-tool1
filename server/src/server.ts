@@ -8,6 +8,7 @@ import { requestLogger } from './middleware/requestLogger';
 import imageRoutes from './routes/imageRoutes';
 import analysisRoutes from './routes/analysisRoutes';
 import userRoutes from './routes/userRoutes';
+import statusRoutes from './routes/statusRoutes';
 import { HealthResponse } from './types';
 
 // Load environment variables
@@ -26,8 +27,9 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:5173'];
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -58,6 +60,7 @@ app.get('/health', (req, res) => {
 app.use('/api/images', imageRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/status', statusRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -74,7 +77,7 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 CORS origin: ${process.env.CORS_ORIGIN || 'http://localhost:5173'}`);
+  console.log(`🔗 CORS origins: ${corsOrigins.join(', ')}`);
 });
 
 export default app;
