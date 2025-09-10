@@ -1,11 +1,137 @@
 import { Request, Response } from 'express';
-import { generateImageWithPollinations, generateImageWithGemini, initializeAi } from '../services/imageService';
+import { GoogleGenAI } from '@google/genai';
+import textSeImage from 'text-se-image';
 import { 
   ImageGenerationRequest, 
   ImageGenerationResponse, 
   LocalImageRequest, 
-  ApiError 
-} from '../types';
+  ApiError,
+  ImageService,
+  PollationsModel,
+  GeminiModel
+} from '../types/index.js';
+import { getGeminiKeyManager } from '../services/geminiKeyManager.js';
+
+/**
+ * Google Gemini AI instance cache
+ */
+const aiInstances: Map<string, GoogleGenAI> = new Map();
+
+/**
+ * Service to model mapping for Pollinations AI
+ */
+const POLLINATIONS_MODEL_MAP: Record<string, PollationsModel> = {
+  'pollinations-flux': 'flux',           
+  'pollinations-kontext': 'realistic',   
+  'pollinations-krea': 'anime',          
+} as const;
+
+/**
+ * Gemini model configuration
+ */
+const GEMINI_MODEL: GeminiModel = 'imagen-3.0-generate-002';
+
+/**
+ * Prompt enhancement based on service type
+ */
+const PROMPT_ENHANCERS = {
+  'gemini-imagen-4-fast': ', simple, quick sketch, minimalist style. Don\'t add any additional effects or styles',
+  'gemini-imagen-4-ultra': ', ultra realistic, 4k, detailed, photorealistic. Don\'t add any additional effects or styles',
+  default: ' Don\'t add any additional effects or styles'
+} as const;
+
+/**
+ * 🔑 Get or create Gemini AI client for specific API key
+ */
+const getGeminiClient = (apiKey: string): GoogleGenAI => {
+  if (!aiInstances.has(apiKey)) {
+    aiInstances.set(apiKey, new GoogleGenAI({ apiKey }));
+  }
+  return aiInstances.get(apiKey)!;
+};
+
+/**
+ * Convert ArrayBuffer to Base64 string
+ */
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const uint8Array = new Uint8Array(buffer);
+  const binaryString = Array.from(uint8Array)
+    .map((byte) => String.fromCharCode(byte))
+    .join('');
+  return Buffer.from(binaryString, 'binary').toString('base64');
+};
+
+/**
+ * Generate image using Pollinations AI
+ */
+const generateImageWithPollinations = async (
+  prompt: string, 
+  service: ImageService = 'pollinations-flux'
+): Promise<string> => {
+  const modelId = POLLINATIONS_MODEL_MAP[service] || 'flux';
+  const finalPrompt = prompt + PROMPT_ENHANCERS.default;
+  
+  console.log(`🎨 Generating image with Pollinations (${modelId}): "${finalPrompt}"`);
+  
+  const imageUrl = await textSeImage(finalPrompt, { id: modelId });
+  const response = await fetch(imageUrl);
+  
+  if (!response.ok) {
+    throw new ApiError(`Failed to fetch generated image: ${response.statusText}`);
+  }
+  
+  const arrayBuffer = await response.arrayBuffer();
+  const base64 = arrayBufferToBase64(arrayBuffer);
+  
+  console.log(`✅ Pollinations image generated successfully (${base64.length} chars)`);
+  return base64;
+};
+
+/**
+ * 🚀 Generate image using Google Gemini AI with intelligent key rotation
+ */
+const generateImageWithGemini = async (
+  prompt: string,
+  service: ImageService = 'gemini-imagen-3'
+): Promise<string> => {
+  const enhancer = service === 'gemini-imagen-4-fast' 
+    ? PROMPT_ENHANCERS['gemini-imagen-4-fast']
+    : service === 'gemini-imagen-4-ultra'
+    ? PROMPT_ENHANCERS['gemini-imagen-4-ultra']
+    : PROMPT_ENHANCERS.default;
+  
+  const finalPrompt = prompt + enhancer;
+  
+  console.log(`🎨 Generating image with Gemini (${GEMINI_MODEL}): "${finalPrompt}"`);
+  
+  // 🔑 Use GeminiKeyManager for intelligent key rotation
+  const imageBytes = await getGeminiKeyManager().executeWithRetry(async (apiKey) => {
+    const gemini = getGeminiClient(apiKey);
+    
+    const response = await gemini.models.generateImages({
+      model: GEMINI_MODEL,
+      prompt: finalPrompt,
+      config: {
+        numberOfImages: 1,
+        outputMimeType: 'image/jpeg',
+        aspectRatio: '1:1',
+      },
+    });
+
+    if (!response.generatedImages || 
+        response.generatedImages.length === 0 || 
+        !response.generatedImages[0] ||
+        !response.generatedImages[0].image ||
+        !response.generatedImages[0].image.imageBytes) {
+      throw new Error('No image returned from Gemini');
+    }
+
+    return response.generatedImages[0].image.imageBytes;
+  }, 'image-generation');
+
+  console.log(`✅ Gemini image generated successfully (${imageBytes.length} chars)`);
+  return imageBytes;
+};
 
 /**
  * Validate image generation request
@@ -44,7 +170,7 @@ const validateLocalImageRequest = (body: any): LocalImageRequest => {
 };
 
 /**
- * Generate image using AI services
+ * Generate image using AI services with GeminiKeyManager
  */
 export const generateImage = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -52,33 +178,26 @@ export const generateImage = async (req: Request, res: Response): Promise<void> 
 
     console.log(`🎯 Image generation request: service=${service}, prompt="${prompt.substring(0, 50)}..."`);
 
-    // Handle Gemini API key initialization
-    if (service.startsWith('gemini-')) {
-      if (apiKey) {
-        initializeAi(apiKey);
-      } else if (process.env.GEMINI_API_KEY) {
-        initializeAi(process.env.GEMINI_API_KEY);
-      } else {
-        throw new ApiError(
-          'API key is required for Gemini image generation. Please set GEMINI_API_KEY in server environment.',
-          400,
-          'MISSING_API_KEY'
-        );
-      }
-    }
-
     // Generate image based on service type
     let imageBase64: string;
-    let model: string;
-
-    if (service.startsWith('pollinations-')) {
+    if (service.startsWith('gemini-')) {
+      imageBase64 = await generateImageWithGemini(prompt, service);
+    } else if (service.startsWith('pollinations-')) {
       imageBase64 = await generateImageWithPollinations(prompt, service);
+    } else {
+      // Default to Gemini for unknown services
+      console.log(`⚠️ Unknown service '${service}', defaulting to Gemini`);
+      imageBase64 = await generateImageWithGemini(prompt, 'gemini-imagen-3');
+    }
+
+    // Determine model name for response
+    let model: string;
+    if (service.startsWith('pollinations-')) {
       model = 'Pollinations AI';
     } else if (service.startsWith('gemini-')) {
-      imageBase64 = await generateImageWithGemini(prompt, service);
       model = 'Google Gemini Imagen';
     } else {
-      throw new ApiError('Unknown image service selected', 400, 'INVALID_SERVICE');
+      model = 'AI Image Generator';
     }
 
     const response: ImageGenerationResponse = {

@@ -8,6 +8,7 @@ import { requestLogger } from './middleware/requestLogger';
 import imageRoutes from './routes/imageRoutes';
 import analysisRoutes from './routes/analysisRoutes';
 import userRoutes from './routes/userRoutes';
+import statusRoutes from './routes/statusRoutes';
 import { HealthResponse } from './types';
 
 // Load environment variables
@@ -59,6 +60,7 @@ app.get('/health', (req, res) => {
 app.use('/api/images', imageRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/status', statusRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
