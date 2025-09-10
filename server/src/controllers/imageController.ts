@@ -121,10 +121,13 @@ export const getLocalImage = async (req: Request, res: Response): Promise<void> 
 
     console.log(`📷 Local image request: ${imageUrl}`);
 
+    // Get origin from request headers to determine frontend URL
+    const origin = req.headers.origin || req.headers.referer?.split('/').slice(0, 3).join('/') || 'http://localhost:5173';
+    
     // Construct full URL for local images
     const fullImageUrl = imageUrl.startsWith('/') 
-      ? `http://localhost:5173${imageUrl}` 
-      : `http://localhost:5173/${imageUrl}`;
+      ? `${origin}${imageUrl}` 
+      : `${origin}/${imageUrl}`;
     
     console.log(`🔗 Fetching from: ${fullImageUrl}`);
     
