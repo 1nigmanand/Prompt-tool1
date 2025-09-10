@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import textSeImage from 'text-se-image';
 
 let ai: GoogleGenAI | null = null;
 
@@ -23,12 +24,22 @@ export const getAi = (): GoogleGenAI => {
 
 export const generateImageWithPollinations = async (
   prompt: string, 
-  model: string = 'flux'
+  service: string = 'pollinations-flux'
 ): Promise<string> => {
   try {
+    // Map service to text-se-image model ID
+    let modelId = 'flux'; // default: High-quality image generation
+    
+    if (service === 'pollinations-kontext') {
+      modelId = 'realistic'; // More photorealistic images
+    } else if (service === 'pollinations-krea') {
+      modelId = 'anime'; // Anime/manga style images
+    }
+
     const finalPrompt = prompt + " Don't add any additional effects or styles";
-    const encodedPrompt = encodeURIComponent(finalPrompt);
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=${model}`;
+    
+    // Use text-se-image package to generate image URL
+    const imageUrl = await textSeImage(finalPrompt, { id: modelId });
     
     const response = await fetch(imageUrl);
     if (!response.ok) {

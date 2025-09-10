@@ -29,8 +29,7 @@ export const generateImage = async (req: Request, res: Response) => {
     let imageBase64: string;
 
     if (service.startsWith('pollinations-')) {
-      const model = service.substring('pollinations-'.length);
-      imageBase64 = await generateImageWithPollinations(prompt, model);
+      imageBase64 = await generateImageWithPollinations(prompt, service);
     } else if (service.startsWith('gemini-')) {
       imageBase64 = await generateImageWithGemini(prompt, service);
     } else {
