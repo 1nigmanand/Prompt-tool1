@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { login, signup, logout, getCurrentUser } from './services/authService';
+import { initializeAuthListener, signOut, getCurrentUser } from './services/firebaseAuthService';
 import { ChallengeStatus, ChallengeProgress, User } from './types';
 import { CHALLENGES } from './constants';
 import { checkBackendHealth } from './services/ApiService';
 import { audioSources } from './services/audioService';
-import AuthScreen from './components/AuthScreen';
+import GoogleSignIn from './components/GoogleSignIn';
 import ChallengeHost from './components/ChallengeHost';
 import Spinner from './components/Spinner';
 
@@ -190,6 +190,33 @@ const App: React.FC = () => {
     };
   }, [isMuted]);
 
+  // Initialize Firebase auth listener
+  useEffect(() => {
+    const unsubscribe = initializeAuthListener(async (user) => {
+      setUser(user);
+      if (user) {
+        console.log('🔐 User authenticated:', user.email);
+        // Play login sound
+        loginAudioRef.current?.play().catch(console.warn);
+        
+        // Sync user profile with backend
+        try {
+          const { firebaseApiService } = await import('./services/firebaseApiService');
+          await firebaseApiService.createOrUpdateProfile({
+            email: user.email,
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || ''
+          });
+          console.log('✅ User profile synced with backend');
+        } catch (error) {
+          console.warn('⚠️ Failed to sync user profile:', error);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const handleAuthSuccess = (loggedInUser: User) => {
     loginAudioRef.current?.play().catch(console.warn);
     setIsHidingAuth(true);
@@ -199,19 +226,17 @@ const App: React.FC = () => {
     }, 1000);
   };
 
-  const handleLogin = async (email: string, password: string) => {
-    const loggedInUser = await login(email, password);
-    handleAuthSuccess(loggedInUser);
-  };
-
-  const handleSignup = async (email: string, password: string) => {
-    const signedUpUser = await signup(email, password);
-    handleAuthSuccess(signedUpUser);
+  const handleGoogleSignIn = (user: User) => {
+    handleAuthSuccess(user);
   };
 
   const handleLogout = async () => {
-    await logout();
-    setUser(null);
+    try {
+      await signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   const handleToggleMute = useCallback(() => {
@@ -321,7 +346,7 @@ const App: React.FC = () => {
       <audio ref={range81to100AudioRef} src={audioSources.range81to100} />
       
       {!user ? (
-        <AuthScreen onLogin={handleLogin} onSignup={handleSignup} isHiding={isHidingAuth} />
+        <GoogleSignIn onSignIn={handleGoogleSignIn} />
       ) : (
         <ChallengeHost
           user={user}

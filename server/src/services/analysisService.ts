@@ -1,20 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { getAi } from './imageService';
-
-interface AnalysisResult {
-  similarityScore: number;
-  feedback: string[];
-}
-
-interface User {
-  email: string;
-}
-
-interface Challenge {
-  name: string;
-  description: string;
-  imageUrl: string;
-}
+import { AnalysisResult, User, Challenge } from '../types';
 
 export const analyzeImages = async (
   user: User,
@@ -95,11 +81,17 @@ export const analyzeImages = async (
     if (!jsonText) {
       throw new Error("Empty response from Gemini API");
     }
+    
+    console.log('🔍 Gemini analysis response:', jsonText);
+    
     const result: AnalysisResult = JSON.parse(jsonText);
     
     if (!result || typeof result.similarityScore !== 'number' || !Array.isArray(result.feedback)) {
+      console.error('❌ Malformed analysis data:', result);
       throw new Error("Model returned malformed analysis data.");
     }
+    
+    console.log('✅ Analysis result validated:', { similarityScore: result.similarityScore, feedbackCount: result.feedback.length });
     
     return result;
 

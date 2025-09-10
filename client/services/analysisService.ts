@@ -1,7 +1,7 @@
 import { AnalysisResult, Challenge, User } from '../types';
 
 // Backend API configuration
-const API_BASE_URL = (process as any).env?.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE_URL = 'http://localhost:3002/api';
 
 // --- Analysis Service Logic ---
 
@@ -32,11 +32,29 @@ export const analyzeImages = async (
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to analyze images');
+      throw new Error(errorData.error || 'Failed to analyze images');
     }
 
     const data = await response.json();
-    return data.analysis;
+    
+    console.log('📊 Analysis response from backend:', data);
+    
+    // Handle new backend response structure
+    if (data.success && data.result) {
+      // Return the result directly with added legacy support
+      const result: AnalysisResult = {
+        similarityScore: data.result.similarityScore || 0,
+        feedback: data.result.feedback || [],
+        // Legacy support for components expecting old format
+        similarity: data.result.similarityScore || 0,
+        passed: (data.result.similarityScore || 0) >= 80
+      };
+      
+      console.log('✅ Processed analysis result:', result);
+      return result;
+    } else {
+      throw new Error(data.error || 'Invalid response format from analysis service');
+    }
 
   } catch (error) {
     console.error("Failed to get analysis:", error);

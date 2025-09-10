@@ -7,9 +7,14 @@ import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import imageRoutes from './routes/imageRoutes';
 import analysisRoutes from './routes/analysisRoutes';
+import userRoutes from './routes/userRoutes';
+import { HealthResponse } from './types';
 
 // Load environment variables
 dotenv.config();
+
+// Initialize Firebase Admin SDK
+import './config/firebase.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -40,16 +45,19 @@ app.use(requestLogger);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
+  const response: HealthResponse = {
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    service: 'Prompt Tool Server'
-  });
+    service: 'Prompt Tool Server',
+    version: '1.0.0'
+  };
+  res.status(200).json(response);
 });
 
 // API routes
 app.use('/api/images', imageRoutes);
 app.use('/api/analysis', analysisRoutes);
+app.use('/api/users', userRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
