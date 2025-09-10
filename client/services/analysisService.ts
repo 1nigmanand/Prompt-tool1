@@ -12,8 +12,17 @@ export const analyzeImages = async (
   userPrompt: string,
 ): Promise<AnalysisResult> => {
   try {
+    console.log(`📊 Client Analysis - Starting process`);
+    console.log(`🎮 Challenge: "${challenge.name}" - ${challenge.imageUrl}`);
+    console.log(`💬 User prompt: "${userPrompt}"`);
+    console.log(`📸 Generated image length: ${generatedImageBase64?.length || 0}`);
+    
     // Get target image as base64
+    console.log(`🎯 Fetching target image from: ${challenge.imageUrl}`);
     const targetImageBase64 = await getTargetImageAsBase64(challenge.imageUrl);
+    console.log(`✅ Target image fetched successfully: ${targetImageBase64?.length || 0} characters`);
+
+    console.log(`📤 Sending request to backend with both images...`);
 
     const response = await fetch(`${API_BASE_URL}/analysis/compare`, {
       method: 'POST',

@@ -130,6 +130,16 @@ export interface ChallengeProgress {
   completedAt?: Date;
   attempts?: number;
   bestScore?: number;
+  promptHistory?: PromptAttempt[];
+}
+
+// Prompt Attempt Type for storing user's written prompts
+export interface PromptAttempt {
+  prompt: string;
+  score: number;
+  timestamp: Date;
+  imageGenerated?: boolean;
+  feedback?: string[];
 }
 
 // User Statistics

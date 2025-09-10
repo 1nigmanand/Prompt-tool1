@@ -46,6 +46,18 @@ export const analyzeImageComparison = async (req: Request, res: Response): Promi
     const { userPrompt, targetImageBase64, apiKey } = req.body;
 
     console.log(`🔍 Analysis request: user=${user.email}, challenge="${challenge.name}"`);
+    console.log(`📸 Generated image length: ${generatedImageBase64 ? generatedImageBase64.length : 'MISSING'}`);
+    console.log(`🎯 Target image length: ${targetImageBase64 ? targetImageBase64.length : 'MISSING'}`);
+    console.log(`💬 User prompt: "${userPrompt}"`);
+
+    // Validate that both images are present
+    if (!targetImageBase64) {
+      throw new ApiError('Target image is required for comparison', 400, 'MISSING_TARGET_IMAGE');
+    }
+
+    if (!generatedImageBase64) {
+      throw new ApiError('Generated image is required for comparison', 400, 'MISSING_GENERATED_IMAGE');
+    }
 
     // Initialize AI if apiKey is provided
     if (apiKey) {

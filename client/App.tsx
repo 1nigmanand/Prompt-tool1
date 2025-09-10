@@ -7,6 +7,7 @@ import { audioSources } from './services/audioService';
 import GoogleSignIn from './components/GoogleSignIn';
 import ChallengeHost from './components/ChallengeHost';
 import Spinner from './components/Spinner';
+import { firebaseApiService } from './services/firebaseApiService';
 
 const PROGRESS_STORAGE_KEY = 'prompt-challenge-progress';
 const MUTE_STORAGE_KEY = 'prompt-challenge-muted';
@@ -63,35 +64,53 @@ const App: React.FC = () => {
 
     initializeApp();
 
-    // Load user progress
-    try {
-      const savedProgress = localStorage.getItem(PROGRESS_STORAGE_KEY);
-      if (savedProgress) {
-        setChallengeProgress(JSON.parse(savedProgress));
-      } else {
+    // Load user progress - First try Firebase, then localStorage
+    const loadUserProgress = async () => {
+      try {
+        if (user) {
+          console.log('📊 Loading progress from Firebase...');
+          const firebaseProgress = await firebaseApiService.getProgress();
+          
+          if (firebaseProgress) {
+            console.log('✅ Progress loaded from Firebase');
+            setChallengeProgress(firebaseProgress);
+            return;
+          }
+        }
+        
+        // Fallback to localStorage
+        console.log('📱 Loading progress from localStorage...');
+        const savedProgress = localStorage.getItem(PROGRESS_STORAGE_KEY);
+        if (savedProgress) {
+          setChallengeProgress(JSON.parse(savedProgress));
+        } else {
+          // Initialize default progress
+          const initialProgress: Record<number, ChallengeProgress> = {};
+          CHALLENGES.forEach((challenge, index) => {
+            initialProgress[challenge.id] = {
+              status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
+              streak: 0,
+              previousSimilarityScore: 0,
+            };
+          });
+          setChallengeProgress(initialProgress);
+        }
+      } catch (e) {
+        console.error("Failed to load progress:", e);
+        // Handle errors by resetting progress
         const initialProgress: Record<number, ChallengeProgress> = {};
         CHALLENGES.forEach((challenge, index) => {
-          initialProgress[challenge.id] = {
-            status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
-            streak: 0,
-            previousSimilarityScore: 0,
-          };
-        });
+            initialProgress[challenge.id] = {
+              status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
+              streak: 0,
+              previousSimilarityScore: 0,
+            };
+          });
         setChallengeProgress(initialProgress);
       }
-    } catch (e) {
-      console.error("Failed to parse progress from local storage", e);
-      // Handle potential corrupted data by resetting progress
-      const initialProgress: Record<number, ChallengeProgress> = {};
-      CHALLENGES.forEach((challenge, index) => {
-          initialProgress[challenge.id] = {
-            status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
-            streak: 0,
-            previousSimilarityScore: 0,
-          };
-        });
-      setChallengeProgress(initialProgress);
-    }
+    };
+
+    loadUserProgress();
   }, []);
 
   // Persist progress to local storage whenever it changes

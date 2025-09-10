@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Challenge, ChallengeStatus, AnalysisResult, ChallengeProgress, ImageService, User } from '../types';
+import { Challenge, ChallengeStatus, AnalysisResult, ChallengeProgress, ImageService, User, PromptAttempt } from '../types';
 import { CHALLENGES, PASS_THRESHOLD } from '../constants';
 import ChallengeSelector from './ChallengeSelector';
 import ChallengeView from './ChallengeView';
@@ -8,6 +8,7 @@ import { analyzeImages } from '../services/analysisService';
 import Header from './Header';
 import MobileMenu from './MobileMenu';
 import Spinner from './Spinner';
+import { firebaseApiService } from '../services/firebaseApiService';
 
 interface ChallengeHostProps {
   user: User;
@@ -178,11 +179,11 @@ const ChallengeHost: React.FC<ChallengeHostProps> = ({
     const currentChallenge = CHALLENGES[currentChallengeIndex];
 
     try {
-      setLoadingMessage('SYNTHESIZING IMAGE...');
+      setLoadingMessage('Generating image...');
       const imageB64 = await generateImage(prompt, selectedService);
       setGeneratedImage(`data:image/jpeg;base64,${imageB64}`);
 
-      setLoadingMessage('ANALYZING RESULTS...');
+      setLoadingMessage('Analyzing image...');
       const result = await analyzeImages(user, currentChallenge, imageB64, prompt);
       
       onStopScanningSound();
@@ -212,10 +213,31 @@ const ChallengeHost: React.FC<ChallengeHostProps> = ({
           newStreak = Math.max(0, newStreak - 2);
         }
 
+        // Create prompt attempt record
+        const promptAttempt: PromptAttempt = {
+          prompt,
+          score: newSimilarityScore,
+          timestamp: new Date(),
+          imageGenerated: true,
+          feedback: result.feedback
+        };
+
+        // Add prompt to history
+        const existingPromptHistory = prev[challengeId].promptHistory || [];
+        
+        console.log('💾 Storing prompt attempt:', {
+          prompt,
+          score: newSimilarityScore,
+          timestamp: new Date(),
+          imageGenerated: true,
+          totalPrompts: existingPromptHistory.length + 1
+        });
+        
         newProgress[challengeId] = {
           streak: newStreak,
           previousSimilarityScore: newSimilarityScore,
           status: passed ? ChallengeStatus.COMPLETED : prev[challengeId].status,
+          promptHistory: [...existingPromptHistory, promptAttempt]
         };
 
         if (passed && currentChallengeIndex + 1 < CHALLENGES.length) {
@@ -226,6 +248,28 @@ const ChallengeHost: React.FC<ChallengeHostProps> = ({
         }
         return newProgress;
       });
+
+      // --- Save to Firebase Backend ---
+      try {
+        console.log('💾 Saving progress to Firebase...');
+        await firebaseApiService.saveProgress(challengeProgress);
+        console.log('✅ Progress synced to Firebase');
+      } catch (error) {
+        console.error('❌ Firebase save failed:', error);
+        // Continue anyway - data is still saved locally
+      }
+
+      // --- Update Stats in Firebase ---
+      if (passed) {
+        try {
+          console.log('📈 Updating stats in Firebase...');
+          await firebaseApiService.updateStats(newSimilarityScore, currentProgress.streak);
+          console.log('✅ Stats synced to Firebase');
+        } catch (error) {
+          console.error('❌ Firebase stats update failed:', error);
+          // Continue anyway
+        }
+      }
 
       // --- Audio Orchestration ---
       const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -249,6 +293,35 @@ const ChallengeHost: React.FC<ChallengeHostProps> = ({
       onStopScanningSound(); // Also stop on error
       console.error(err);
       setError(err.message || 'An unexpected error occurred.');
+      
+      // Store failed prompt attempt
+      setChallengeProgress(prev => {
+        const newProgress = { ...prev };
+        const challengeId = currentChallenge.id;
+        
+        const failedPromptAttempt: PromptAttempt = {
+          prompt,
+          score: 0,
+          timestamp: new Date(),
+          imageGenerated: false,
+          feedback: [`Oops! ${err.message || 'Something went wrong'}`]
+        };
+        
+        const existingPromptHistory = prev[challengeId].promptHistory || [];
+        
+        console.log('💾 Storing failed prompt attempt:', {
+          prompt,
+          error: err.message,
+          totalPrompts: existingPromptHistory.length + 1
+        });
+        
+        newProgress[challengeId] = {
+          ...prev[challengeId],
+          promptHistory: [...existingPromptHistory, failedPromptAttempt]
+        };
+        
+        return newProgress;
+      });
     } finally {
       setIsLoading(false);
       setLoadingMessage('');
@@ -280,6 +353,19 @@ const ChallengeHost: React.FC<ChallengeHostProps> = ({
   const currentChallenge = CHALLENGES[currentChallengeIndex];
   const currentChallengeSpecificProgress = challengeProgress[currentChallenge?.id];
   const challengeStatuses = CHALLENGES.map(c => challengeProgress[c.id]?.status || ChallengeStatus.LOCKED);
+
+  // Debug: Log prompt history for current challenge
+  if (currentChallengeSpecificProgress?.promptHistory) {
+    console.log(`📊 Challenge ${currentChallenge.id} prompt history:`, {
+      totalPrompts: currentChallengeSpecificProgress.promptHistory.length,
+      prompts: currentChallengeSpecificProgress.promptHistory.map(p => ({
+        prompt: p.prompt,
+        score: p.score,
+        imageGenerated: p.imageGenerated,
+        timestamp: p.timestamp
+      }))
+    });
+  }
 
   if (!currentChallengeSpecificProgress) {
     return <div className="min-h-screen flex items-center justify-center"><Spinner /></div>;

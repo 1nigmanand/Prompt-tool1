@@ -5,12 +5,12 @@ import { getAnalytics } from "firebase/analytics";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "***REMOVED***",
+  apiKey: "AIzaSyCr-mPuR2BnqwbrU4Dpp6LF5OvSj3KxbnI",
   authDomain: "prompt-proj1.firebaseapp.com",
   projectId: "prompt-proj1",
   storageBucket: "prompt-proj1.firebasestorage.app",
-  messagingSenderId: "***REMOVED***",
-  appId: "1:***REMOVED***:web:5cc6aaa88b6c9357ff203b",
+  messagingSenderId: "692160650594",
+  appId: "1:692160650594:web:5cc6aaa88b6c9357ff203b",
   measurementId: "G-N5J8TRYGX5"
 };
 
