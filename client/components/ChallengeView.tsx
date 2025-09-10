@@ -89,17 +89,37 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
         <div className="pr-16 space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <HudFrame title="TARGET">
-                 {targetImageSrc ? (
-                  <img src={targetImageSrc} alt="Target for the challenge" className="w-full h-full object-cover" />
+                {targetImageSrc ? (
+                  <div className="relative w-full h-full">
+                    <img src={targetImageSrc} alt="Target for the challenge" className="w-full h-full object-cover" />
+                    {isLoading && loadingMessage === 'Analyzing image...' && (
+                      <div className="absolute inset-0 rounded-md overflow-hidden pointer-events-none">
+                        <div className="scanner-bar-vertical"></div>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <Spinner />
                 )}
             </HudFrame>
             <HudFrame title="GENERATION">
-                {isLoading ? (
+                {isLoading && loadingMessage === 'Generating image...' ? (
                   <div className="text-center">
                     <Spinner />
                     <p className="mt-2 text-cyber-primary animate-flicker font-bold tracking-widest">{loadingMessage}</p>
+                  </div>
+                ) : isLoading && loadingMessage === 'Analyzing image...' && generatedImage ? (
+                  <div className="relative">
+                    <img src={generatedImage} alt="AI generated image" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-cyber-primary/10 flex items-center justify-center">
+                      <div className="text-center">
+                        <Spinner />
+                        <p className="mt-2 text-cyber-primary animate-flicker font-bold tracking-widest">{loadingMessage}</p>
+                      </div>
+                    </div>
+                    <div className="absolute inset-0 rounded-md overflow-hidden pointer-events-none">
+                      <div className="scanner-bar-vertical"></div>
+                    </div>
                   </div>
                 ) : generatedImage ? (
                   <img src={generatedImage} alt="AI generated image" className="w-full h-full object-cover" />
@@ -118,7 +138,7 @@ const ChallengeView: React.FC<ChallengeViewProps> = ({
                   className="w-full h-28 p-3 bg-cyber-surface/80 rounded-md border-2 border-cyber-secondary/50 focus:border-cyber-secondary focus:ring-2 focus:ring-cyber-secondary/50 focus:outline-none transition-all text-cyber-text placeholder:text-cyber-dim font-sans"
                   disabled={isLoading}
                 />
-                {isLoading && (
+                {isLoading && loadingMessage === 'Generating image...' && (
                   <div className="absolute inset-0 rounded-md overflow-hidden pointer-events-none">
                     <div className="scanner-bar"></div>
                   </div>

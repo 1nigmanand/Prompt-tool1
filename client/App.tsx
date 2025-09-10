@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { login, signup, logout, getCurrentUser } from './services/authService';
+import { initializeAuthListener, signOut, getCurrentUser } from './services/firebaseAuthService';
 import { ChallengeStatus, ChallengeProgress, User } from './types';
 import { CHALLENGES } from './constants';
-import { initializeAi } from './services/ApiService';
+import { checkBackendHealth } from './services/ApiService';
 import { audioSources } from './services/audioService';
-import AuthScreen from './components/AuthScreen';
+import GoogleSignIn from './components/GoogleSignIn';
 import ChallengeHost from './components/ChallengeHost';
 import Spinner from './components/Spinner';
+import { firebaseApiService } from './services/firebaseApiService';
 
 const PROGRESS_STORAGE_KEY = 'prompt-challenge-progress';
 const MUTE_STORAGE_KEY = 'prompt-challenge-muted';
@@ -44,49 +45,72 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    // Initialize AI Service
-    if (process.env.API_KEY) {
+    // Check backend connection instead of direct AI initialization
+    const initializeApp = async () => {
       try {
-        initializeAi(process.env.API_KEY);
-        setIsInitialized(true);
-      } catch (e: any) {
-        setError("Failed to initialize AI service: " + e.message);
+        const backendHealthy = await checkBackendHealth();
+        if (backendHealthy) {
+          setIsInitialized(true);
+          setError("");
+        } else {
+          setError("Backend server is not running. Please start the server on port 3002.");
+          setIsInitialized(false);
+        }
+      } catch (error) {
+        setError("Failed to connect to backend server. Please ensure the server is running.");
         setIsInitialized(false);
       }
-    } else {
-      setError("CRITICAL ERROR: API_KEY environment variable not set. Application cannot function.");
-      setIsInitialized(false);
-    }
+    };
 
-    // Load user progress
-    try {
-      const savedProgress = localStorage.getItem(PROGRESS_STORAGE_KEY);
-      if (savedProgress) {
-        setChallengeProgress(JSON.parse(savedProgress));
-      } else {
+    initializeApp();
+
+    // Load user progress - First try Firebase, then localStorage
+    const loadUserProgress = async () => {
+      try {
+        if (user) {
+          console.log('📊 Loading progress from Firebase...');
+          const firebaseProgress = await firebaseApiService.getProgress();
+          
+          if (firebaseProgress) {
+            console.log('✅ Progress loaded from Firebase');
+            setChallengeProgress(firebaseProgress);
+            return;
+          }
+        }
+        
+        // Fallback to localStorage
+        console.log('📱 Loading progress from localStorage...');
+        const savedProgress = localStorage.getItem(PROGRESS_STORAGE_KEY);
+        if (savedProgress) {
+          setChallengeProgress(JSON.parse(savedProgress));
+        } else {
+          // Initialize default progress
+          const initialProgress: Record<number, ChallengeProgress> = {};
+          CHALLENGES.forEach((challenge, index) => {
+            initialProgress[challenge.id] = {
+              status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
+              streak: 0,
+              previousSimilarityScore: 0,
+            };
+          });
+          setChallengeProgress(initialProgress);
+        }
+      } catch (e) {
+        console.error("Failed to load progress:", e);
+        // Handle errors by resetting progress
         const initialProgress: Record<number, ChallengeProgress> = {};
         CHALLENGES.forEach((challenge, index) => {
-          initialProgress[challenge.id] = {
-            status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
-            streak: 0,
-            previousSimilarityScore: 0,
-          };
-        });
+            initialProgress[challenge.id] = {
+              status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
+              streak: 0,
+              previousSimilarityScore: 0,
+            };
+          });
         setChallengeProgress(initialProgress);
       }
-    } catch (e) {
-      console.error("Failed to parse progress from local storage", e);
-      // Handle potential corrupted data by resetting progress
-      const initialProgress: Record<number, ChallengeProgress> = {};
-      CHALLENGES.forEach((challenge, index) => {
-          initialProgress[challenge.id] = {
-            status: index === 0 ? ChallengeStatus.UNLOCKED : ChallengeStatus.LOCKED,
-            streak: 0,
-            previousSimilarityScore: 0,
-          };
-        });
-      setChallengeProgress(initialProgress);
-    }
+    };
+
+    loadUserProgress();
   }, []);
 
   // Persist progress to local storage whenever it changes
@@ -185,6 +209,33 @@ const App: React.FC = () => {
     };
   }, [isMuted]);
 
+  // Initialize Firebase auth listener
+  useEffect(() => {
+    const unsubscribe = initializeAuthListener(async (user) => {
+      setUser(user);
+      if (user) {
+        console.log('🔐 User authenticated:', user.email);
+        // Play login sound
+        loginAudioRef.current?.play().catch(console.warn);
+        
+        // Sync user profile with backend
+        try {
+          const { firebaseApiService } = await import('./services/firebaseApiService');
+          await firebaseApiService.createOrUpdateProfile({
+            email: user.email,
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || ''
+          });
+          console.log('✅ User profile synced with backend');
+        } catch (error) {
+          console.warn('⚠️ Failed to sync user profile:', error);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const handleAuthSuccess = (loggedInUser: User) => {
     loginAudioRef.current?.play().catch(console.warn);
     setIsHidingAuth(true);
@@ -194,19 +245,17 @@ const App: React.FC = () => {
     }, 1000);
   };
 
-  const handleLogin = async (email: string, password: string) => {
-    const loggedInUser = await login(email, password);
-    handleAuthSuccess(loggedInUser);
-  };
-
-  const handleSignup = async (email: string, password: string) => {
-    const signedUpUser = await signup(email, password);
-    handleAuthSuccess(signedUpUser);
+  const handleGoogleSignIn = (user: User) => {
+    handleAuthSuccess(user);
   };
 
   const handleLogout = async () => {
-    await logout();
-    setUser(null);
+    try {
+      await signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   const handleToggleMute = useCallback(() => {
@@ -316,7 +365,7 @@ const App: React.FC = () => {
       <audio ref={range81to100AudioRef} src={audioSources.range81to100} />
       
       {!user ? (
-        <AuthScreen onLogin={handleLogin} onSignup={handleSignup} isHiding={isHidingAuth} />
+        <GoogleSignIn onSignIn={handleGoogleSignIn} />
       ) : (
         <ChallengeHost
           user={user}

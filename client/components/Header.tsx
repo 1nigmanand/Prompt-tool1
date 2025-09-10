@@ -71,11 +71,32 @@ const Header: React.FC<HeaderProps> = ({
                         className="text-cyber-dim hover:text-cyber-primary transition-colors"
                         onClick={() => setShowProfileDropdown((prev) => !prev)}
                     >
-                        {user.email}
+                    <div className="flex items-center gap-3">
+                        {user.photoURL && (
+                            <img 
+                                src={user.photoURL} 
+                                alt={user.displayName || user.email}
+                                className="w-8 h-8 rounded-full border border-cyber-accent"
+                            />
+                        )}
+                        <span>{user.displayName || user.email}</span>
+                    </div>
                     </button>
                     {showProfileDropdown && (
                         <div className="absolute right-0 mt-4 w-56 bg-cyber-surface rounded-md shadow-lg z-50 border-2 border-cyber-secondary/50">
-                        <div className="p-3 text-center text-cyber-dim border-b border-cyber-secondary/30">{user.email}</div>
+                        <div className="p-3 text-center text-cyber-dim border-b border-cyber-secondary/30 flex items-center justify-center gap-3">
+                            {user.photoURL && (
+                                <img 
+                                    src={user.photoURL} 
+                                    alt={user.displayName || user.email}
+                                    className="w-10 h-10 rounded-full border border-cyber-accent"
+                                />
+                            )}
+                            <div>
+                                <div className="font-semibold">{user.displayName || 'User'}</div>
+                                <div className="text-sm opacity-75">{user.email}</div>
+                            </div>
+                        </div>
                         <button
                             className="w-full text-left px-4 py-3 text-sm text-cyber-text hover:bg-cyber-secondary hover:text-cyber-bg transition-colors"
                             onClick={() => { onSaveProgress(); setShowProfileDropdown(false); }}

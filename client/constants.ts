@@ -1,7 +1,7 @@
 
 import { Challenge } from './types';
 
-export const PASS_THRESHOLD = 75;
+export const PASS_THRESHOLD = 80; // Percentage threshold to pass a challenge
 
 export const CHALLENGES: Challenge[] = [
   {

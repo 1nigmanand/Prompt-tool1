@@ -15,16 +15,31 @@ export interface Challenge {
 export interface AnalysisResult {
   similarityScore: number;
   feedback: string[];
+  // Legacy support for components expecting old format
+  similarity?: number;
+  passed?: boolean;
 }
 
 export interface ChallengeProgress {
   status: ChallengeStatus;
   streak: number;
   previousSimilarityScore: number;
+  promptHistory?: PromptAttempt[];
+}
+
+export interface PromptAttempt {
+  prompt: string;
+  score: number;
+  timestamp: Date;
+  imageGenerated?: boolean;
+  feedback?: string[];
 }
 
 export type ImageService = 'pollinations-flux' | 'pollinations-kontext' | 'pollinations-krea' | 'gemini-imagen-3' | 'gemini-imagen-4-fast' | 'gemini-imagen-4-ultra';
 
 export type User = {
+  uid: string;
   email: string;
+  displayName?: string;
+  photoURL?: string;
 };
