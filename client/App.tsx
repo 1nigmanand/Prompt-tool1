@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { login, signup, logout, getCurrentUser } from './services/authService';
 import { ChallengeStatus, ChallengeProgress, User } from './types';
 import { CHALLENGES } from './constants';
-import { initializeAi } from './services/ApiService';
+import { checkBackendHealth } from './services/ApiService';
 import { audioSources } from './services/audioService';
 import AuthScreen from './components/AuthScreen';
 import ChallengeHost from './components/ChallengeHost';
@@ -44,19 +44,24 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    // Initialize AI Service
-    if (process.env.API_KEY) {
+    // Check backend connection instead of direct AI initialization
+    const initializeApp = async () => {
       try {
-        initializeAi(process.env.API_KEY);
-        setIsInitialized(true);
-      } catch (e: any) {
-        setError("Failed to initialize AI service: " + e.message);
+        const backendHealthy = await checkBackendHealth();
+        if (backendHealthy) {
+          setIsInitialized(true);
+          setError("");
+        } else {
+          setError("Backend server is not running. Please start the server on port 3002.");
+          setIsInitialized(false);
+        }
+      } catch (error) {
+        setError("Failed to connect to backend server. Please ensure the server is running.");
         setIsInitialized(false);
       }
-    } else {
-      setError("CRITICAL ERROR: API_KEY environment variable not set. Application cannot function.");
-      setIsInitialized(false);
-    }
+    };
+
+    initializeApp();
 
     // Load user progress
     try {

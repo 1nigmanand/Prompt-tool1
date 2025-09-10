@@ -13,8 +13,17 @@ export const generateImage = async (req: Request, res: Response) => {
     }
 
     // Initialize AI if apiKey is provided and service requires Gemini
-    if (service.startsWith('gemini-') && apiKey) {
-      initializeAi(apiKey);
+    if (service.startsWith('gemini-')) {
+      if (apiKey) {
+        initializeAi(apiKey);
+      } else if (process.env.GEMINI_API_KEY) {
+        initializeAi(process.env.GEMINI_API_KEY);
+      } else {
+        return res.status(400).json({
+          error: true,
+          message: 'API key is required for Gemini image generation. Please set GEMINI_API_KEY in server environment.'
+        });
+      }
     }
 
     let imageBase64: string;
@@ -23,12 +32,6 @@ export const generateImage = async (req: Request, res: Response) => {
       const model = service.substring('pollinations-'.length);
       imageBase64 = await generateImageWithPollinations(prompt, model);
     } else if (service.startsWith('gemini-')) {
-      if (!apiKey && !process.env.GEMINI_API_KEY) {
-        return res.status(400).json({
-          error: true,
-          message: 'API key is required for Gemini image generation'
-        });
-      }
       imageBase64 = await generateImageWithGemini(prompt, service);
     } else {
       return res.status(400).json({
@@ -66,7 +69,11 @@ export const getLocalImage = async (req: Request, res: Response) => {
 
     // For local images, we'll read them from the client's public folder
     // In a real scenario, you'd serve these statically or from a CDN
-    const response = await fetch(`http://localhost:5173${imageUrl}`);
+    const fullImageUrl = imageUrl.startsWith('/') 
+      ? `http://localhost:5173${imageUrl}` 
+      : `http://localhost:5173/${imageUrl}`;
+    
+    const response = await fetch(fullImageUrl);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch image: ${response.statusText}`);

@@ -1,11 +1,22 @@
 import { ImageService } from '../types';
 
-// Backend API configuration
-const API_BASE_URL = (process as any).env?.VITE_API_BASE_URL || 'http://localhost:3001/api';
+// Backend API configuration  
+const API_BASE_URL = 'http://localhost:3002/api';
 
-// Initialize AI (now handled by backend)
+// Health check function to verify backend connection
+export const checkBackendHealth = async (): Promise<boolean> => {
+  try {
+    const response = await fetch(API_BASE_URL.replace('/api', '/health'));
+    return response.ok;
+  } catch (error) {
+    console.error('Backend health check failed:', error);
+    return false;
+  }
+};
+
+// Initialize AI (now handled by backend) - keeping for compatibility
 export const initializeAi = (apiKey: string) => {
-  // Store API key for backend requests
+  // Store API key for backend requests (optional, backend can use env vars)
   localStorage.setItem('gemini_api_key', apiKey);
 };
 
