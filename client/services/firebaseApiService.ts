@@ -1,9 +1,9 @@
 import { User } from '../types';
 import { getCurrentUser, getIdToken } from './firebaseAuthService';
+import { API_ENDPOINTS } from '../config/api';
 
-// const BASE_URL = 'http://localhost:3002/api'; // Express server
-const BASE_URL = 'http://localhost:8787/api'; // Local Workers  
-// const BASE_URL = 'https://workers-api.prompt-tool1-api.workers.dev/api'; // Production Workers
+// Backend API configuration (now auto-detects local vs production) 
+const BASE_URL = API_ENDPOINTS.API;
 
 /**
  * 🔥 Firebase Backend API Service
