@@ -26,6 +26,78 @@ export class UserDataService {
     try {
       console.log(`👤 Creating/updating user: ${uid}`);
       
+      // Real Firebase operations
+      if (accessToken.startsWith('firebase-service-token:')) {
+        console.log('🔥 REAL FIREBASE: Creating/updating user in Firestore');
+        
+        const userDocUrl = `${FIRESTORE_BASE_URL}/${USERS_COLLECTION}/${uid}`;
+        const now = new Date();
+        
+        const firestoreUserData: any = {
+          fields: {
+            email: { stringValue: userData.email || '' },
+            displayName: { stringValue: userData.displayName || '' },
+            photoURL: { stringValue: userData.photoURL || '' },
+            updatedAt: { timestampValue: now.toISOString() },
+            lastLoginAt: { timestampValue: now.toISOString() }
+          }
+        };
+        
+        try {
+          // Check if user exists first
+          const checkResponse = await fetch(userDocUrl);
+          
+          if (checkResponse.status === 404) {
+            // Create new user
+            console.log(`🆕 CREATING NEW USER in Firestore: ${userData.email}`);
+            firestoreUserData.fields.createdAt = { timestampValue: now.toISOString() };
+            
+            const createResponse = await fetch(userDocUrl, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(firestoreUserData)
+            });
+            
+            if (createResponse.ok) {
+              console.log(`✅ USER CREATED IN FIRESTORE: ${userData.email}`);
+            } else {
+              console.error(`❌ Firestore create failed: ${createResponse.status}`);
+            }
+          } else if (checkResponse.ok) {
+            // Update existing user
+            console.log(`🔄 UPDATING USER in Firestore: ${userData.email}`);
+            
+            const updateResponse = await fetch(userDocUrl, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(firestoreUserData)
+            });
+            
+            if (updateResponse.ok) {
+              console.log(`✅ USER UPDATED IN FIRESTORE: ${userData.email}`);
+            } else {
+              console.error(`❌ Firestore update failed: ${updateResponse.status}`);
+            }
+          }
+          
+          // Initialize user stats
+          await this.initializeUserStats(uid, accessToken);
+          
+          return {
+            id: uid,
+            email: userData.email || '',
+            displayName: userData.displayName || '',
+            photoURL: userData.photoURL || '',
+            createdAt: now,
+            updatedAt: now,
+            lastLoginAt: now
+          };
+          
+        } catch (error) {
+          console.error('❌ FIRESTORE ERROR:', error);
+        }
+      }
+      
       // For development mode, simulate user creation/update
       if (accessToken === 'dev-mode-token') {
         console.log('🛠️ Development mode: Simulating user creation/update');
@@ -393,6 +465,52 @@ export class UserDataService {
    */
   private static async initializeUserStats(uid: string, accessToken: string): Promise<void> {
     try {
+      // Real Firebase operations
+      if (accessToken.startsWith('firebase-service-token:')) {
+        console.log(`🔥 REAL FIREBASE: Initializing stats for user: ${uid}`);
+        
+        const statsDocUrl = `${FIRESTORE_BASE_URL}/${USER_STATS_COLLECTION}/${uid}`;
+        
+        const initialStats = {
+          fields: {
+            userId: { stringValue: uid },
+            totalChallengesAttempted: { integerValue: '0' },
+            totalChallengesCompleted: { integerValue: '0' },
+            averageSimilarityScore: { doubleValue: 0 },
+            averageScore: { doubleValue: 0 },
+            bestSimilarityScore: { doubleValue: 0 },
+            totalTimeSpent: { integerValue: '0' },
+            streak: { integerValue: '0' },
+            currentStreak: { integerValue: '0' },
+            maxStreak: { integerValue: '0' },
+            level: { integerValue: '1' },
+            experiencePoints: { integerValue: '0' },
+            totalScore: { integerValue: '0' },
+            lastChallengeAt: { timestampValue: new Date().toISOString() },
+            updatedAt: { timestampValue: new Date().toISOString() }
+          }
+        };
+        
+        try {
+          const response = await fetch(statsDocUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(initialStats)
+          });
+          
+          if (response.ok) {
+            console.log(`✅ STATS CREATED IN FIRESTORE: ${uid}`);
+          } else {
+            console.error(`❌ Stats creation failed: ${response.status}`);
+          }
+          
+        } catch (error) {
+          console.error('❌ FIRESTORE STATS ERROR:', error);
+        }
+        
+        return;
+      }
+      
       // For development mode, simulate stats initialization
       if (accessToken === 'dev-mode-token') {
         console.log(`📊 Initial stats simulated for user: ${uid}`);

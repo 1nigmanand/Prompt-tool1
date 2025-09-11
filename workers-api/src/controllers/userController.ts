@@ -326,6 +326,18 @@ export class UserController {
  * In a real implementation, this would use service account credentials
  */
 export function getFirebaseAccessToken(env: any): string {
+  // Log environment debugging info
+  console.log('🔧 Environment vars available:', Object.keys(env || {}));
+  console.log('🔧 ENABLE_REAL_FIREBASE value:', env?.ENABLE_REAL_FIREBASE);
+  
+  // For testing: Always return firebase-service-token to enable real operations
+  const enableRealFirebase = true; // Forced enable for testing
+  
+  if (enableRealFirebase) {
+    console.log('🔥 Real Firebase operations ENABLED (forced for testing)');
+    return `firebase-service-token:firebase-adminsdk-fbsvc@prompt-proj1.iam.gserviceaccount.com`;
+  }
+  
   console.log('⚠️ Using development mode - Firebase access token bypassed');
   return 'dev-mode-token';
 }
