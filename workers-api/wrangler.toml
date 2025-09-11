@@ -1,0 +1,9 @@
+name = "workers-api"
+main = "dist/worker.js"
+compatibility_date = "2025-01-23"
+
+[env.development]
+vars = { }
+
+[env.production]  
+vars = { }

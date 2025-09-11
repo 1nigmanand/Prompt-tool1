@@ -1,0 +1,16 @@
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 500,
+    public code?: string
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+export interface ComparisonResult {
+  similarity: number;
+  explanation: string;
+  reasoning: string;
+}
