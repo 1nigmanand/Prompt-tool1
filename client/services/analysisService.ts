@@ -2,7 +2,8 @@ import { AnalysisResult, Challenge, User } from '../types';
 import { API_ENDPOINTS } from '../config/api';
 
 // Backend API configuration (now auto-detects local vs production)
-const API_BASE_URL = API_ENDPOINTS.API;
+// Use BASE and manually add /api for consistency with ApiService
+const API_BASE_URL = API_ENDPOINTS.BASE;
 
 // --- Analysis Service Logic ---
 
@@ -25,7 +26,7 @@ export const analyzeImages = async (
 
     console.log(`📤 Sending request to backend with both images...`);
 
-    const response = await fetch(`${API_BASE_URL}/analysis/compare`, {
+    const response = await fetch(`${API_BASE_URL}/api/analysis/compare`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -78,16 +79,27 @@ export const analyzeImages = async (
 // Helper function to convert local image URL to base64
 async function getTargetImageAsBase64(imageUrl: string): Promise<string> {
   try {
-    const response = await fetch(imageUrl);
+    // Use the local image API endpoint instead of direct fetch
+    const response = await fetch(`${API_BASE_URL}/api/images/local`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ imageUrl })
+    });
+    
     if (!response.ok) {
-      throw new Error(`Failed to fetch target image: ${response.statusText}`);
+      throw new Error(`Failed to fetch image from URL: ${imageUrl}. Status: ${response.status}`);
     }
-    const arrayBuffer = await response.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    const binaryString = Array.from(uint8Array).map((byte) => String.fromCharCode(byte)).join('');
-    return btoa(binaryString);
+    
+    const result = await response.json();
+    if (!result.success || !result.imageBase64) {
+      throw new Error(`API returned error: ${result.error || 'No image data'}`);
+    }
+    
+    return result.imageBase64;
   } catch (error) {
-    console.error('Error converting target image to base64:', error);
-    throw new Error('Failed to process target image');
+    console.error('Error fetching local image:', error);
+    throw new Error(`Failed to fetch image from URL: ${imageUrl}. Status: `);
   }
 }

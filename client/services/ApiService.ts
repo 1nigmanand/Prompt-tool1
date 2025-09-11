@@ -7,7 +7,7 @@ const API_BASE_URL = API_ENDPOINTS.BASE;
 // Health check function to verify backend connection
 export const checkBackendHealth = async (): Promise<boolean> => {
   try {
-    const response = await fetch(API_BASE_URL.replace('/api', '/health'));
+    const response = await fetch(`${API_BASE_URL}/health`);
     return response.ok;
   } catch (error) {
     console.error('Backend health check failed:', error);
@@ -31,7 +31,7 @@ export const getAi = () => {
 
 export const generateImage = async (prompt: string, service: ImageService = 'pollinations-flux'): Promise<string> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/images/generate`, {
+    const response = await fetch(`${API_BASE_URL}/api/images/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ export const generateImage = async (prompt: string, service: ImageService = 'pol
  */
 export const getLocalImageAsBlobUrl = async (url: string): Promise<string> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/images/local`, {
+    const response = await fetch(`${API_BASE_URL}/api/images/local`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

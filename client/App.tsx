@@ -53,11 +53,11 @@ const App: React.FC = () => {
           setIsInitialized(true);
           setError("");
         } else {
-          setError("Backend server is not running. Please start the server on port 3002.");
+          setError("Backend API server is not reachable. Please check your connection.");
           setIsInitialized(false);
         }
       } catch (error) {
-        setError("Failed to connect to backend server. Please ensure the server is running.");
+        setError("Failed to connect to backend API. Please check your internet connection.");
         setIsInitialized(false);
       }
     };
