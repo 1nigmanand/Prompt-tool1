@@ -1,0 +1,26 @@
+name = "workers-api"
+main = "dist/worker.js"
+compatibility_date = "2025-01-23"
+
+# Local development environment variables
+[vars]
+NODE_ENV = "development"
+FIREBASE_PROJECT_ID = "prompt-proj1"
+ENABLE_REAL_FIREBASE = "true"
+
+[dev]
+local_protocol = "http"
+port = 8787
+
+[env.development]
+vars = { 
+  NODE_ENV = "development",
+  FIREBASE_PROJECT_ID = "prompt-proj1",
+  ENABLE_REAL_FIREBASE = "true"
+}
+
+[env.production]  
+vars = {
+  NODE_ENV = "production", 
+  FIREBASE_PROJECT_ID = "prompt-proj1"
+}

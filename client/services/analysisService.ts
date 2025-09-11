@@ -1,7 +1,9 @@
 import { AnalysisResult, Challenge, User } from '../types';
 
 // Backend API configuration
-const API_BASE_URL = 'http://localhost:3002/api';
+// const API_BASE_URL = 'http://localhost:3002/api'; // Express server  
+// const API_BASE_URL = 'http://localhost:8787/api'; // Local Workers
+const API_BASE_URL = 'https://workers-api.prompt-tool1-api.workers.dev/api'; // Production Workers
 
 // --- Analysis Service Logic ---
 
