@@ -4,30 +4,50 @@ import { logger } from 'hono/logger';
 import { GoogleGenAI } from '@google/genai';
 import { getLocalImage, validateLocalImageRequest } from './localImageService';
 
-// Types
-interface User {
+// Import new modular components
+import userRoutes from './routes/userRoutes';
+import statusRoutes from './routes/statusRoutes';
+import imageRoutes from './routes/imageRoutes';
+import analysisRoutes from './routes/analysisRoutes';
+import { requestLogger, errorHandler } from './middleware/errorHandler';
+import { healthCheck } from './controllers/statusController';
+import { initializeFirebaseWorkers } from './config/firebase';
+
+// Import types
+import {
+  ImageService,
+  PollationsModel,
+  GeminiModel,
+  User,
+  Challenge,
+  AnalysisRequest,
+  ImageGenerationRequest
+} from './types';
+
+// Re-export existing interface definitions for backward compatibility
+interface LocalUser {
   id: string;
   email: string;
   displayName?: string;
   photoURL?: string;
 }
 
-interface Challenge {
+interface LocalChallenge {
   id: string;
   name: string;
   description: string;
   targetImage: string;
 }
 
-interface AnalysisRequest {
-  user: User;
-  challenge: Challenge;
+interface LocalAnalysisRequest {
+  user: LocalUser;
+  challenge: LocalChallenge;
   generatedImageBase64: string;
   userPrompt: string;
   targetImageBase64: string;
 }
 
-interface ImageGenerationRequest {
+interface LocalImageGenerationRequest {
   prompt: string;
   provider?: 'gemini' | 'pollinations';
   service?: ImageService;  // Client compatibility
@@ -35,19 +55,6 @@ interface ImageGenerationRequest {
   size?: string;
   apiKey?: string;  // Client compatibility
 }
-
-// Extended type definitions from server
-type ImageService = 
-  | 'pollinations-flux' 
-  | 'pollinations-kontext' 
-  | 'pollinations-krea' 
-  | 'gemini-imagen-3' 
-  | 'gemini-imagen-4-fast' 
-  | 'gemini-imagen-4-ultra';
-
-type PollationsModel = 'flux' | 'realistic' | 'anime' | 'flux-schnell' | 'turbo' | 'majestic';
-
-type GeminiModel = 'imagen-3.0-generate-001' | 'imagen-3.0-generate-002' | 'imagen-4.0-generate-001';
 
 interface AnalysisResult {
   similarityScore: number;
@@ -499,10 +506,20 @@ app.get('/health', (c) => {
   });
 });
 
+// Request logger middleware
+app.use('*', requestLogger);
+
+// Mount modular routes
+app.route('/api/users', userRoutes);
+app.route('/api/status', statusRoutes);
+// Note: Image and analysis routes are implemented inline below for now
+// app.route('/api/images', imageRoutes);
+// app.route('/api/analysis', analysisRoutes);
+
 // Image generation endpoint
 app.post('/api/images/generate', async (c) => {
   try {
-    const body = await c.req.json() as ImageGenerationRequest;
+    const body = await c.req.json() as LocalImageGenerationRequest;
     const { prompt, provider, service, apiKey } = body;
 
     // Handle client compatibility - map service to provider
@@ -664,7 +681,7 @@ app.post('/api/images/local', async (c) => {
 // Image analysis endpoint
 app.post('/api/analysis/compare', async (c) => {
   try {
-    const body = await c.req.json() as AnalysisRequest;
+    const body = await c.req.json() as LocalAnalysisRequest;
     const { 
       user, 
       challenge, 
